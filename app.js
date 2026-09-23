@@ -10,7 +10,7 @@
    1. KONFIGURASI  -  ISI BAGIAN INI SETELAH MENERBITKAN APPS SCRIPT
    ============================================================ */
 
-var API_URL = 'https://script.google.com/macros/s/AKfycbzBF4dh9HErj9CQKS6c7HP1hU_VNuMDAuVVFE_3PCcR77PQ0ZEjHiiH52Udavm4OYwG7A/exec';   // .../exec
+var API_URL = 'GANTI_DENGAN_URL_WEB_APP_ANDA';   // .../exec
 
 /* ============================================================
    2. KEADAAN APLIKASI
@@ -60,6 +60,8 @@ var KEADAAN = {
               'Aplikasi terhubung ke Google Apps Script. Data tersimpan ke Google Sheets.'],
   putus:     ['Server tidak dapat dihubungi', 'Tidak terhubung',
               'Periksa sambungan internet, atau alamat Web App pada app.js.'],
+  lambat:    ['Server tidak menjawab', 'Tidak menjawab',
+              'Permintaan tidak dijawab dalam 15 detik. Coba muat ulang halaman.'],
   contoh:    ['Mode contoh \u2014 data tidak tersimpan', 'Mode contoh',
               'Alamat Web App belum diisi, jadi aplikasi memakai data contoh di memori.']
 };
@@ -111,7 +113,6 @@ function periksaSesi(janji) {
   return janji.then(function (j) {
     catatSambungan(j);
     if (j && j.sesiHabis) {
-      try { sessionStorage.removeItem('token'); } catch (e) { /* abaikan */ }
       alert(j.pesan || 'Sesi berakhir. Silakan masuk kembali.');
       location.reload();
     }
@@ -269,16 +270,12 @@ $('formMasuk').addEventListener('submit', function (e) {
     if (!j.ok) { $('pesanMasuk').textContent = j.pesan || 'Nama pengguna atau kata sandi salah.'; return; }
     sesi = { token: j.token, nama: j.nama, peran: j.peran };
     $('sandiMasuk').value = '';
-    try { sessionStorage.setItem('token', j.token); } catch (err) { /* abaikan */ }
     bukaAplikasi();
   });
 });
 
 $('tombolKeluar').addEventListener('click', function () {
-  kirim('keluar').then(function () {
-    try { sessionStorage.removeItem('token'); } catch (err) { /* abaikan */ }
-    location.reload();
-  });
+  kirim('keluar').then(function () { location.reload(); });
 });
 
 $('tombolSandiku').addEventListener('click', function () {
@@ -1005,27 +1002,20 @@ function aman(teks) {
 (function periksaKoneksi() {
   if (MODE_CONTOH) { tandaiSambungan('contoh'); return; }
   tandaiSambungan('memeriksa');
+
+  // Jangan biarkan tanda menggantung bila server tidak menjawab sama sekali.
+  var selesai = false;
+  var batas = setTimeout(function () {
+    if (!selesai && keadaanKini === 'memeriksa') tandaiSambungan('lambat');
+  }, 15000);
+
   fetch(API_URL + '?aksi=cek')
     .then(function (r) { return r.json(); })
-    .then(function (j) { tandaiSambungan(j && j.ok ? 'sambung' : 'putus'); })
-    .catch(function () { tandaiSambungan('putus'); });
+    .then(function (j) { selesai = true; clearTimeout(batas); tandaiSambungan(j && j.ok ? 'sambung' : 'putus'); })
+    .catch(function () { selesai = true; clearTimeout(batas); tandaiSambungan('putus'); });
 })();
 
-/* Melanjutkan sesi bila halaman dimuat ulang pada tab yang sama. */
-(function lanjutkanSesi() {
-  var token = '';
-  try { token = sessionStorage.getItem('token') || ''; } catch (err) { /* abaikan */ }
-  if (!token) return;
-  sesi.token = token;
-  tunggu(true);
-  ambil('data', { periode: '' }, true).then(function (j) {
-    tunggu(false);
-    if (j && j.ok) {
-      sesi.nama = j.nama; sesi.peran = j.peran;
-      bukaAplikasi();
-    } else {
-      sesi.token = '';
-      try { sessionStorage.removeItem('token'); } catch (e) { /* abaikan */ }
-    }
-  });
-})();
+/* Token sesi hanya disimpan di memori halaman, tidak di peramban.
+   Akibatnya setiap kali halaman dibuka atau dimuat ulang, nama pengguna dan
+   kata sandi selalu diminta kembali. Ini disengaja, karena aplikasi dipakai
+   pada komputer yang mungkin dipakai bergantian. */
