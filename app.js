@@ -10,7 +10,7 @@
    1. KONFIGURASI  -  ISI BAGIAN INI SETELAH MENERBITKAN APPS SCRIPT
    ============================================================ */
 
-var API_URL = "https://script.google.com/macros/s/AKfycbxSYegYpLsDmkETF588VogUTHKl0yBcOShe4PUwAVJLsF8bjZQRCq6kYjiUrgQNRTN1Zg/exec";
+var API_URL = 'GANTI_DENGAN_URL_WEB_APP_ANDA';   // .../exec
 
 /* ============================================================
    2. KEADAAN APLIKASI
@@ -51,6 +51,45 @@ paksaHurufBesar('uNama');
 
 function tunggu(nyala) { $('tunggu').classList.toggle('sembunyi', !nyala); }
 
+/* ------------------------- tanda sambungan ------------------------- */
+
+var KEADAAN = {
+  memeriksa: ['Memeriksa sambungan\u2026', 'Memeriksa\u2026',
+              'Sedang menghubungi server.'],
+  sambung:   ['Terhubung ke server', 'Terhubung',
+              'Aplikasi terhubung ke Google Apps Script. Data tersimpan ke Google Sheets.'],
+  putus:     ['Server tidak dapat dihubungi', 'Tidak terhubung',
+              'Periksa sambungan internet, atau alamat Web App pada app.js.'],
+  contoh:    ['Mode contoh \u2014 data tidak tersimpan', 'Mode contoh',
+              'Alamat Web App belum diisi, jadi aplikasi memakai data contoh di memori.']
+};
+
+var keadaanKini = '';
+
+function tandaiSambungan(keadaan) {
+  if (keadaan === keadaanKini) return;
+  keadaanKini = keadaan;
+  var k = KEADAAN[keadaan];
+
+  var a = $('statusMasuk');
+  a.className = 'status-koneksi ' + keadaan;
+  a.title = k[2];
+  a.lastElementChild.textContent = k[0];
+
+  var b = $('lencanaKoneksi');
+  b.className = 'lencana lencana-koneksi ' + keadaan;
+  b.title = k[2];
+  b.lastElementChild.textContent = k[1];
+}
+
+/** Dipanggil setiap kali ada jawaban, agar tanda selalu mutakhir. */
+function catatSambungan(j) {
+  if (MODE_CONTOH) return j;
+  if (j && j.luring) tandaiSambungan('putus');
+  else if (j) tandaiSambungan('sambung');
+  return j;
+}
+
 /** Selama URL belum diisi, aplikasi berjalan dengan data contoh di memori. */
 var MODE_CONTOH = (API_URL.indexOf('http') !== 0);
 
@@ -62,7 +101,7 @@ function ambil(aksi, isian, diam) {
     var q = new URLSearchParams(Object.assign({ aksi: aksi, token: sesi.token }, isian || {}));
     janji = fetch(API_URL + '?' + q.toString())
       .then(function (r) { return r.json(); })
-      .catch(function () { return { ok: false, pesan: 'Tidak dapat menghubungi server.' }; });
+      .catch(function () { return { ok: false, luring: true, pesan: 'Tidak dapat menghubungi server.' }; });
   }
   return diam ? janji : periksaSesi(janji);
 }
@@ -70,6 +109,7 @@ function ambil(aksi, isian, diam) {
 /** Bila server menyatakan sesi berakhir, kembalikan pengguna ke halaman masuk. */
 function periksaSesi(janji) {
   return janji.then(function (j) {
+    catatSambungan(j);
     if (j && j.sesiHabis) {
       try { sessionStorage.removeItem('token'); } catch (e) { /* abaikan */ }
       alert(j.pesan || 'Sesi berakhir. Silakan masuk kembali.');
@@ -90,7 +130,7 @@ function kirim(aksi, isian) {
     body: JSON.stringify(Object.assign({ aksi: aksi, token: sesi.token }, isian || {}))
   })
     .then(function (r) { return r.json(); })
-    .catch(function () { return { ok: false, pesan: 'Tidak dapat menghubungi server.' }; }));
+    .catch(function () { return { ok: false, luring: true, pesan: 'Tidak dapat menghubungi server.' }; }));
 }
 
 /** Masuk memakai nama dan kata sandi, bukan token. */
@@ -103,7 +143,8 @@ function masukKe(nama, sandi) {
     body: JSON.stringify(isian)
   })
     .then(function (r) { return r.json(); })
-    .catch(function () { return { ok: false, pesan: 'Tidak dapat menghubungi server.' }; });
+    .catch(function () { return { ok: false, luring: true, pesan: 'Tidak dapat menghubungi server.' }; })
+    .then(catatSambungan);
 }
 
 
@@ -959,6 +1000,16 @@ function aman(teks) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+/* Memeriksa sambungan ke server begitu halaman dibuka. */
+(function periksaKoneksi() {
+  if (MODE_CONTOH) { tandaiSambungan('contoh'); return; }
+  tandaiSambungan('memeriksa');
+  fetch(API_URL + '?aksi=cek')
+    .then(function (r) { return r.json(); })
+    .then(function (j) { tandaiSambungan(j && j.ok ? 'sambung' : 'putus'); })
+    .catch(function () { tandaiSambungan('putus'); });
+})();
 
 /* Melanjutkan sesi bila halaman dimuat ulang pada tab yang sama. */
 (function lanjutkanSesi() {
