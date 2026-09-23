@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Peramalan Kebutuhan Sparepart</title>
+<link rel="stylesheet" href="gaya.css">
+</head>
+<body>
+
+<!-- ============================ HALAMAN MASUK ============================ -->
+<div id="layarMasuk" class="layar-masuk">
+  <form class="kartu-masuk" id="formMasuk" autocomplete="off">
+    <h1>Peramalan Kebutuhan Sparepart</h1>
+    <p class="anak-judul">PT Karunia Beton Lestari</p>
+    <label for="namaMasuk">Nama pengguna</label>
+    <input type="text" id="namaMasuk" class="huruf-besar" required autocomplete="username">
+    <label for="sandiMasuk">Kata sandi</label>
+    <input type="password" id="sandiMasuk" required autocomplete="current-password">
+    <button type="submit" id="tombolMasuk">Masuk</button>
+    <p class="pesan-salah" id="pesanMasuk"></p>
+  </form>
+</div>
+
+<!-- ============================== APLIKASI ============================== -->
+<div id="layarAplikasi" class="sembunyi">
+
+  <header class="kepala">
+    <div class="kepala-judul">
+      <strong>Peramalan Kebutuhan Sparepart</strong>
+      <span id="labelPengguna" class="lencana"></span>
+    </div>
+    <div class="kepala-tombol">
+      <button id="tombolSandiku" class="tombol-teks">Ganti sandi</button>
+      <button id="tombolKeluar" class="tombol-teks">Keluar</button>
+    </div>
+  </header>
+
+  <nav class="tab" id="barisTab"></nav>
+
+  <main class="isi">
+
+    <!-- ------------------------------ RENCANA ------------------------------ -->
+    <section id="tRencana" class="panel">
+      <div class="panel-kepala">
+        <div>
+          <h2>Perkiraan Kebutuhan</h2>
+          <p class="anak-judul" id="ketRencana"></p>
+        </div>
+        <button id="tombolUnduh" class="tombol-kecil">Unduh tabel (CSV)</button>
+      </div>
+      <div class="gulir"><table id="tabelRencana"></table></div>
+      <p class="catatan">
+        Rentang wajar dihitung dari MAD, yaitu rata-rata selisih antara ramalan dan
+        kenyataan pada periode uji. Ketepatan mengikuti kriteria Lewis (1982):
+        di bawah 10% sangat baik, 10–20% baik, 20–50% cukup, di atas 50% kurang akurat.
+      </p>
+    </section>
+
+    <!-- ------------------------------- INPUT ------------------------------- -->
+    <section id="tInput" class="panel">
+      <h2>Input Pemakaian</h2>
+
+      <form id="formPakai" class="form-isi" autocomplete="off">
+        <div class="baris-isi">
+          <label for="isiPeriode">Periode</label>
+          <select id="isiPeriode"></select>
+        </div>
+
+        <div class="baris-isi">
+          <label for="isiKode">Kode barang</label>
+          <input type="text" id="isiKode" placeholder="mis. FIL01" autocomplete="off">
+        </div>
+
+        <div class="baris-isi cari-bungkus">
+          <label for="isiNama">Nama barang</label>
+          <input type="text" id="isiNama" placeholder="ketik sebagian nama atau kode" autocomplete="off">
+          <div id="saranBarang" class="saran sembunyi"></div>
+        </div>
+
+        <p id="statusBarang" class="status-barang"></p>
+
+        <div class="baris-isi">
+          <label for="isiJumlah">Jumlah</label>
+          <div class="isi-satuan">
+            <input type="number" id="isiJumlah" min="0" step="1" placeholder="0">
+            <span id="labelSatuan"></span>
+          </div>
+        </div>
+
+        <button type="submit" id="tombolSimpan">Simpan</button>
+        <p id="pesanSimpan" class="pesan"></p>
+      </form>
+
+      <h3 id="judulTerisi">Sudah diisi pada periode ini</h3>
+      <div class="gulir"><table id="tabelTerisi"></table></div>
+    </section>
+
+    <!-- ------------------------------ ANALISIS ----------------------------- -->
+    <section id="tAnalisis" class="panel">
+      <h2>Analisis Perbandingan Metode</h2>
+      <div class="baris-isi">
+        <label for="pilihItem">Item sparepart</label>
+        <select id="pilihItem"></select>
+      </div>
+      <div id="isiAnalisis"></div>
+    </section>
+
+    <!-- ------------------------------- BARANG ------------------------------ -->
+    <section id="tBarang" class="panel">
+      <h2>Data Barang</h2>
+
+      <form id="formBarang" class="form-isi sejajar" autocomplete="off">
+        <div class="baris-isi">
+          <label for="bKode">Kode</label>
+          <input type="text" id="bKode" placeholder="FIL01">
+        </div>
+        <div class="baris-isi tumbuh">
+          <label for="bNama">Nama barang</label>
+          <input type="text" id="bNama" placeholder="Filter oli mesin (eks DTRUCK31)">
+        </div>
+        <div class="baris-isi sempit">
+          <label for="bSatuan">Satuan</label>
+          <input type="text" id="bSatuan" placeholder="pcs" value="pcs">
+        </div>
+        <button type="submit" class="tombol-kecil">Simpan barang</button>
+      </form>
+      <p id="pesanBarang" class="pesan"></p>
+
+      <div class="gulir"><table id="tabelBarang"></table></div>
+      <p class="catatan">
+        Satu item satu kode. Kode lama yang pernah dipakai di program perusahaan
+        cukup dituliskan di dalam nama barang, misalnya “Filter oli mesin (eks DTRUCK31)”,
+        karena pencarian juga mencocokkan kata di tengah nama.
+      </p>
+    </section>
+
+    <!-- ------------------------------ PENGGUNA ----------------------------- -->
+    <section id="tPengguna" class="panel">
+      <h2>Pengguna</h2>
+
+      <form id="formPengguna" class="form-isi sejajar" autocomplete="off">
+        <div class="baris-isi">
+          <label for="uNama">Nama pengguna</label>
+          <input type="text" id="uNama" class="huruf-besar" placeholder="mis. BUDI" autocomplete="off">
+        </div>
+        <div class="baris-isi">
+          <label for="uSandi">Kata sandi</label>
+          <input type="text" id="uSandi" placeholder="ketik sendiri, minimal 8 karakter" autocomplete="off">
+        </div>
+        <div class="baris-isi sempit-sedang">
+          <label for="uPeran">Peran</label>
+          <select id="uPeran">
+            <option value="gudang">Gudang</option>
+            <option value="logistik">Logistik</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <button type="submit" class="tombol-kecil">Tambah pengguna</button>
+      </form>
+      <p id="pesanPengguna" class="pesan"></p>
+
+      <div class="gulir"><table id="tabelPengguna"></table></div>
+
+      <p class="catatan">
+        Kata sandi tidak tersimpan apa adanya. Yang disimpan hanyalah ringkasan
+        SHA-256 bergaram, sehingga membuka sheet PENGGUNA pun tidak memperlihatkan
+        sandi siapa pun. Karena itu sandi yang terlupa tidak dapat dilihat kembali,
+        hanya dapat diatur ulang. Harus selalu tersisa sekurang-kurangnya satu admin aktif.
+      </p>
+    </section>
+
+  </main>
+
+  <!-- =============================== JENDELA =============================== -->
+  <div id="tirai" class="tirai sembunyi">
+    <div class="jendela" role="dialog" aria-modal="true" aria-labelledby="judulJendela">
+      <h3 id="judulJendela"></h3>
+      <div id="isiJendela"></div>
+      <div class="jendela-tombol">
+        <button type="button" id="jBatal" class="tombol-kecil">Batal</button>
+        <button type="button" id="jSimpan" class="tombol-utama">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tunggu" class="tunggu sembunyi"><div class="putar"></div></div>
+</div>
+
+<script src="peramalan.js"></script>
+<script src="contoh.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
