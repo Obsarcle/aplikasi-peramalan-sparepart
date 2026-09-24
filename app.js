@@ -344,11 +344,14 @@ function gantiTab(id, tombol) {
 /* ============================================================
    5. MEMUAT DAN MENGHITUNG
    ============================================================ */
+var waktuMuat = 0;          // kapan data terakhir diambil dari server
+var JEDA_SEGAR = 15 * 60000; // 15 menit
 
 function muatData() {
   tunggu(true);
   return ambil('data', { periode: $('isiPeriode').value || '' }).then(function (j) {
     tunggu(false);
+    waktuMuat = Date.now();
     if (!j.ok) { bukaJendela('Gagal memuat data', '<p class="catatan">' + aman(j.pesan || '') + '</p>', '', null); return; }
 
     data.barang = j.barang || [];
@@ -363,12 +366,29 @@ function muatData() {
   });
 }
 
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState !== 'visible') return;
+  if (!sesi.token || !waktuMuat) return;
+  if (Date.now() - waktuMuat < JEDA_SEGAR) return;
+  muatData();
+});
+
+$('tombolSegarkan').addEventListener('click', function () {
+  var t = $('tombolSegarkan');
+  t.disabled = true;
+  t.textContent = 'Memuat\u2026';
+  muatData().then(function () {
+    t.disabled = false;
+    t.textContent = 'Muat ulang data';
+  });
+});
+
 function hitungSemua() {
   hasil = {};
   var perItem = {};
   data.pemakaian.forEach(function (x) {
     (perItem[x.kode] = perItem[x.kode] || []).push(x);
-  });
+});
 
   data.barang.forEach(function (b) {
     var deret = Peramalan.susunDeret(perItem[b.kode] || [], data.periodeTerakhir);
