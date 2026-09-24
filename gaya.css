@@ -361,14 +361,16 @@ tr.tebal td { font-weight: 700; background: #FAFCFF; }
 
 .sambung  .titik { background: #1B7F4B; box-shadow: 0 0 0 3px rgba(27, 127, 75, .16); }
 .putus    .titik { background: #B3261E; box-shadow: 0 0 0 3px rgba(179, 38, 30, .16); }
-.contoh   .titik { background: #B4530A; box-shadow: 0 0 0 3px rgba(180, 83, 10, .16); }
+.belum    .titik { background: #B3261E; box-shadow: 0 0 0 3px rgba(180, 83, 10, .16); }
 .memeriksa .titik { background: #B8BFCB; animation: kedip 1s ease-in-out infinite; }
 
 @keyframes kedip { 50% { opacity: .3; } }
 
 .status-koneksi.sambung { color: var(--hijau); }
 .status-koneksi.putus   { color: var(--merah); }
-.status-koneksi.contoh  { color: var(--jingga); }
+.status-koneksi.belum   { color: var(--merah); }
 
 .lencana-koneksi { display: inline-flex; align-items: center; gap: 6px; }
 .lencana-koneksi .titik { box-shadow: none; }
+
+#tombolCoba { width: 100%; margin-top: 10px; }
