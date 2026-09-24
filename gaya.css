@@ -130,6 +130,7 @@ h3 { font-size: 15px; margin: 24px 0 8px; }
 
 .form-isi { max-width: 460px; }
 .form-isi.sejajar { max-width: none; display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.form-isi.sejajar .baris-isi { margin-bottom: 0; }
 .form-isi.sejajar .tumbuh { flex: 1 1 260px; }
 .form-isi.sejajar .sempit { width: 100px; }
 .form-isi.sejajar .sempit-sedang { width: 150px; }
