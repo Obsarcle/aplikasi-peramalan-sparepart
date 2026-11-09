@@ -100,6 +100,43 @@
       <div class="gulir"><table id="tabelTerisi"></table></div>
     </section>
 
+    <!-- --------------------------- KLASIFIKASI FSN --------------------------- -->
+    <section id="tFSN" class="panel-kelompok">
+      <div class="panel">
+        <div class="panel-kepala">
+          <div>
+            <h2>Klasifikasi FSN (Turn Over Ratio)</h2>
+            <p class="anak-judul" id="ketFSN"></p>
+          </div>
+          <button id="tombolUnduhFSN" class="tombol-kecil">Unduh tabel (CSV)</button>
+        </div>
+        <div class="kartu-ringkas" id="ringkasFSN"></div>
+        <div class="gulir"><table id="tabelFSN"></table></div>
+        <div class="kotak-definisi">
+          <strong>Definisi.</strong> Turn Over Ratio (TOR) adalah perbandingan antara jumlah barang
+          yang dipakai dan rata-rata persediaan dalam satu periode, yang menunjukkan seberapa cepat
+          persediaan berputar.
+          TOR &gt; 3 = <span class="label sangat-baik">Fast moving</span>&nbsp;
+          1 &le; TOR &le; 3 = <span class="label cukup">Slow moving</span>&nbsp;
+          TOR &lt; 1 = <span class="label kurang">Non moving</span><br>
+          Sumber: Hudori &amp; Tarigan (2019); Amalia et al. (2023).
+          &infin; = rata-rata persediaan 0 tetapi ada pemakaian (barang langsung habis), tidak ikut dirata-ratakan.<br>
+          <strong>Masuk sampel</strong> = Fast moving dan tidak ada satu bulan pun dengan pemakaian 0.
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-kepala">
+          <div class="judul-pilih">
+            <h3>Rincian item</h3>
+            <select id="pilihFSN"></select>
+          </div>
+          <button id="tombolSedia" class="tombol-kecil">Ubah data persediaan</button>
+        </div>
+        <div id="isiRincianFSN"></div>
+      </div>
+    </section>
+
     <!-- ------------------------------ ANALISIS ----------------------------- -->
     <section id="tAnalisis" class="panel">
       <h2>Analisis Perbandingan Metode</h2>
@@ -186,6 +223,7 @@
 </div>
 
 <script src="peramalan.js"></script>
+<script src="tor.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
