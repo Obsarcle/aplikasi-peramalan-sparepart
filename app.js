@@ -17,19 +17,20 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbzBF4dh9HErj9CQKS6c7HP1hU
    ============================================================ */
 
 var sesi   = { token: '', nama: '', peran: '' };
-var data   = { barang: [], pemakaian: [], periodeTerakhir: '' };
+var data   = { barang: [], pemakaian: [], persediaan: [], periodeTerakhir: '' };
+var hasilTOR = null;   // hasil klasifikasi FSN (hanya admin)
 var hasil  = {};       // kode barang -> hasil perhitungan
 var pilihan = null;    // barang yang sedang dipilih di form input
 
 var TAB = {
   admin:    [['tRencana', 'Rencana Pembelian'], ['tInput', 'Input & Koreksi'],
-             ['tAnalisis', 'Analisis Metode'], ['tBarang', 'Data Barang'],
+             ['tFSN', 'Klasifikasi FSN'], ['tAnalisis', 'Analisis Metode'], ['tBarang', 'Data Barang'],
              ['tPengguna', 'Pengguna']],
   logistik: [['tRencana', 'Rencana Pembelian']],
   gudang:   [['tInput', 'Input Pemakaian']]
 };
 
-var SEMUA_TAB = ['tRencana', 'tInput', 'tAnalisis', 'tBarang', 'tPengguna'];
+var SEMUA_TAB = ['tRencana', 'tInput', 'tFSN', 'tAnalisis', 'tBarang', 'tPengguna'];
 
 var $ = function (id) { return document.getElementById(id); };
 
@@ -356,13 +357,14 @@ function muatData() {
 
     data.barang = j.barang || [];
     data.pemakaian = j.pemakaian || [];
+    data.persediaan = j.persediaan || [];
     data.periodeTerakhir = j.periodeTerakhir || '';
 
     if (sesi.peran !== 'gudang') hitungSemua();
 
     if (sesi.peran === 'gudang' || sesi.peran === 'admin') gambarInput();
     if (sesi.peran === 'admin' || sesi.peran === 'logistik') gambarRencana();
-    if (sesi.peran === 'admin') { isiPilihanItem(); gambarBarang(); muatPengguna(); }
+    if (sesi.peran === 'admin') { gambarFSN(); isiPilihanItem(); gambarBarang(); muatPengguna(); }
   });
 }
 
@@ -784,6 +786,269 @@ function gambarAnalisis() {
 function kartu(judul, nilai) {
   return '<div><span>' + aman(judul) + '</span><strong>' + aman(String(nilai)) + '</strong></div>';
 }
+
+/* ============================================================
+   8b. KLASIFIKASI FSN (TURN OVER RATIO)  -  hanya admin
+   ============================================================ */
+
+var KELAS_LABEL = { fast: 'sangat-baik', slow: 'cukup', non: 'kurang', tidak: 'belum', belum: 'belum' };
+
+/** Angka gaya Indonesia: dua desimal, koma sebagai pemisah. */
+function desimal(x, digit) {
+  if (x === null || x === undefined) return '—';
+  if (x === Infinity) return '∞';
+  return x.toFixed(digit === undefined ? 2 : digit).replace('.', ',');
+}
+
+function selTOR(r) {
+  if (!r || r.status === 'sebelumAwal') return '—';
+  if (r.status === 'takHingga') return '∞';
+  if (r.status === 'tidak') return '-';
+  return desimal(r.tor);
+}
+
+function lencanaKelas(h) {
+  return '<span class="label ' + KELAS_LABEL[h.kunci] + '">' + aman(h.kelas) + '</span>';
+}
+
+function lencanaSampel(h) {
+  if (h.sampel) return '<span class="label sangat-baik">Ya</span>';
+  var alasan = (h.kunci === 'fast' && h.bulanNol > 0)
+    ? ' <span class="alasan">(ada ' + h.bulanNol + ' bulan pemakaian 0)</span>' : '';
+  return '<span class="label kurang">Tidak</span>' + alasan;
+}
+
+function barangAktif() {
+  return data.barang.filter(function (b) { return b.aktif; });
+}
+
+function gambarFSN() {
+  var aktif = barangAktif();
+  hasilTOR = TOR.hitungSemua(aktif, data.pemakaian, data.persediaan || []);
+  var tahun = hasilTOR.tahunDipakai;
+
+  $('ketFSN').textContent = tahun.length
+    ? 'TOR dihitung per tahun ' + tahun.join(', ') + ' lalu dirata-ratakan (' + TOR.JUMLAH_TAHUN +
+      ' tahun lengkap terakhir). Hanya tahun dengan data 12 bulan penuh.'
+    : 'Belum ada tahun dengan data pemakaian 12 bulan penuh, jadi TOR belum dapat dihitung.';
+
+  // Ringkasan
+  var hitung = { fast: 0, slow: 0, non: 0, tidak: 0, belum: 0 }, sampel = 0;
+  aktif.forEach(function (b) {
+    var h = hasilTOR.item[b.kode];
+    hitung[h.kunci] += 1;
+    if (h.sampel) sampel += 1;
+  });
+  var ringkas = kartu('Fast moving', hitung.fast + ' item') +
+                kartu('Slow moving', hitung.slow + ' item') +
+                kartu('Non moving', hitung.non + ' item') +
+                kartu('Masuk sampel peramalan', sampel + ' item');
+  if (hitung.belum) ringkas += kartu('Persediaan belum diisi', hitung.belum + ' item');
+  if (hitung.tidak) ringkas += kartu('Tidak dapat dihitung', hitung.tidak + ' item');
+  $('ringkasFSN').innerHTML = ringkas;
+
+  // Tabel utama, diurutkan dari TOR rata-rata tertinggi.
+  var urut = aktif.slice().sort(function (a, b) {
+    var x = hasilTOR.item[a.kode].rata, y = hasilTOR.item[b.kode].rata;
+    if (x === null && y === null) return a.kode < b.kode ? -1 : 1;
+    if (x === null) return 1;
+    if (y === null) return -1;
+    if (x === y) return a.kode < b.kode ? -1 : 1;
+    return y > x ? 1 : -1;
+  });
+
+  var html = '<thead><tr><th>Kode</th><th>Nama barang</th>' +
+    tahun.map(function (t) { return '<th class="angka">TOR ' + t + '</th>'; }).join('') +
+    '<th class="angka">TOR rata-rata</th><th>Kelas FSN</th><th class="bungkus">Masuk sampel peramalan</th><th></th></tr></thead><tbody>';
+
+  if (!urut.length) html += '<tr><td colspan="' + (6 + tahun.length) + '">Belum ada data barang.</td></tr>';
+
+  urut.forEach(function (b) {
+    var h = hasilTOR.item[b.kode];
+    html += '<tr><td>' + aman(b.kode) + '</td><td>' + aman(b.nama) + '</td>';
+    tahun.forEach(function (t, i) { html += '<td class="angka">' + selTOR(h.perTahun[i]) + '</td>'; });
+    html += '<td class="angka tebal">' + (h.rata === null ? '—' : desimal(h.rata)) + '</td>' +
+            '<td>' + lencanaKelas(h) + '</td><td class="bungkus">' + lencanaSampel(h) + '</td>' +
+            '<td><button class="tombol-tabel" data-rincian="' + aman(b.kode) + '">Rincian</button></td></tr>';
+  });
+  $('tabelFSN').innerHTML = html + '</tbody>';
+
+  Array.prototype.forEach.call($('tabelFSN').querySelectorAll('button[data-rincian]'), function (btn) {
+    btn.onclick = function () {
+      $('pilihFSN').value = btn.dataset.rincian;
+      gambarRincianFSN();
+      $('pilihFSN').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+  });
+
+  // Pilihan item untuk rincian; pertahankan item yang sedang dipilih.
+  var sel = $('pilihFSN'), lama = sel.value;
+  sel.innerHTML = aktif.map(function (b) {
+    return '<option value="' + aman(b.kode) + '">' + aman(b.kode) + ' — ' + aman(b.nama) + '</option>';
+  }).join('');
+  if (lama && hasilTOR.item[lama]) sel.value = lama;
+  sel.onchange = gambarRincianFSN;
+  gambarRincianFSN();
+}
+
+function gambarRincianFSN() {
+  var kode = $('pilihFSN').value;
+  var wadah = $('isiRincianFSN');
+  var h = hasilTOR && hasilTOR.item[kode];
+  $('tombolSedia').disabled = !h;
+
+  if (!h) { wadah.innerHTML = '<p class="catatan">Belum ada data barang.</p>'; return; }
+
+  if (h.kunci === 'belum') {
+    wadah.innerHTML = '<p class="catatan">Data persediaan item ini belum diisi. Tekan ' +
+      '<strong>Ubah data persediaan</strong> untuk mengisi stok awal dan barang masuk per tahun.</p>';
+    return;
+  }
+  if (!h.perTahun.length) {
+    wadah.innerHTML = '<p class="catatan">Belum ada tahun dengan data pemakaian 12 bulan penuh.</p>';
+    return;
+  }
+
+  var komponen = [
+    ['Persediaan awal (Paw)', 'paw', 0], ['Barang masuk (Pms)', 'pms', 0], ['Dipakai (Ppk)', 'ppk', 0],
+    ['Persediaan akhir (Pak)', 'pak', 0], ['Rata-rata persediaan (Prt)', 'prt', 2],
+    ['TORp', 'torp', 2], ['Wsp (hari)', 'wsp', 2]
+  ];
+
+  var html = '<div class="gulir"><table><thead><tr><th>Komponen</th>' +
+    h.perTahun.map(function (r) { return '<th class="angka">' + r.tahun + '</th>'; }).join('') +
+    '</tr></thead><tbody>';
+
+  komponen.forEach(function (k) {
+    html += '<tr><td>' + k[0] + '</td>' + h.perTahun.map(function (r) {
+      var v = r[k[1]];
+      var teks = (v === null || v === undefined) ? '—' : (k[2] ? desimal(v, k[2]) : String(v));
+      return '<td class="angka">' + teks + '</td>';
+    }).join('') + '</tr>';
+  });
+  html += '<tr class="tebal"><td>TOR</td>' + h.perTahun.map(function (r) {
+    return '<td class="angka">' + selTOR(r) + '</td>';
+  }).join('') + '</tr></tbody></table></div>';
+
+  h.peringatan.forEach(function (p) { html += '<p class="peringatan">' + aman(p) + '</p>'; });
+
+  html += '<p class="catatan">Pak = Paw + Pms − Ppk · Prt = (Paw + Pak)/2 · TORp = Ppk/Prt · ' +
+          'Wsp = Jhp/TORp (Jhp 365, tahun kabisat 366) · TOR = 365/Wsp.<br>' +
+          'TOR rata-rata = <strong>' + (h.rata === null ? '—' : desimal(h.rata)) + '</strong> → ' +
+          lencanaKelas(h) + ' · bulan dengan pemakaian 0: ' + h.bulanNol + ' · masuk sampel: ' +
+          (h.sampel ? 'Ya' : 'Tidak') + '</p>';
+
+  wadah.innerHTML = html;
+}
+
+/* ---------------------------- jendela persediaan ---------------------------- */
+
+$('tombolSedia').addEventListener('click', function () {
+  var kode = $('pilihFSN').value;
+  if (!kode) return;
+  var h = hasilTOR && hasilTOR.item[kode];
+  var awal = (h && h.tahunAwal) || hasilTOR.tahunPertama || new Date().getFullYear();
+  jendelaPersediaan(kode, awal);
+});
+
+function jendelaPersediaan(kode, tahunAwal) {
+  var b = data.barang.filter(function (x) { return x.kode === kode; })[0] || { nama: '', satuan: '' };
+  var lama = {}, stokLama = '';
+  (data.persediaan || []).forEach(function (x) {
+    if (x.kode !== kode) return;
+    lama[x.tahun] = x.masuk;
+    if (x.tahun === tahunAwal && x.stokAwal !== null) stokLama = x.stokAwal;
+  });
+
+  var akhir = Math.max(hasilTOR.tahunTerakhir || tahunAwal, tahunAwal);
+  var lengkap = hasilTOR.tahunLengkap;
+
+  var isi = '<p class="catatan" style="margin:0">' + aman(b.nama) + ' (' + aman(b.satuan) + ')</p>' +
+    '<div class="baris-isi"><label for="sTahunAwal">Tahun stok awal</label>' +
+    '<input type="number" id="sTahunAwal" min="2000" max="2100" step="1" value="' + tahunAwal + '"></div>' +
+    '<div class="baris-isi"><label for="sStok">Stok awal 1 Januari ' + tahunAwal + ' (diisi sekali)</label>' +
+    '<input type="number" id="sStok" min="0" step="1" value="' + aman(stokLama) + '"></div>';
+
+  for (var t = tahunAwal; t <= akhir; t++) {
+    var berjalan = lengkap.indexOf(t) < 0
+      ? ' <span class="label-catatan">(tahun berjalan, belum ikut TOR)</span>' : '';
+    isi += '<div class="baris-isi"><label for="sMasuk' + t + '">Barang masuk ' + t + berjalan + '</label>' +
+           '<input type="number" id="sMasuk' + t + '" data-tahun="' + t + '" min="0" step="1" value="' +
+           aman(lama[t] === undefined ? '' : lama[t]) + '"></div>';
+  }
+
+  isi += '<p class="catatan">Pemakaian per tahun diambil otomatis dari data Input Pemakaian. ' +
+         'Stok awal tahun berikutnya = persediaan akhir tahun sebelumnya. Isian tahun baru muncul ' +
+         'otomatis begitu ada data pemakaian tahun itu; TOR tahun itu dihitung setelah pemakaiannya lengkap 12 bulan.</p>' +
+         '<p class="pesan"></p>';
+
+  bukaJendela('Data persediaan · ' + kode, isi, 'Simpan', function () { simpanPersediaanJendela(kode); });
+  $('sStok').focus();
+
+  $('sTahunAwal').onchange = function () {
+    var baru = parseInt(this.value, 10);
+    if (baru >= 2000 && baru <= 2100 && baru !== tahunAwal) jendelaPersediaan(kode, baru);
+  };
+}
+
+function simpanPersediaanJendela(kode) {
+  var tahunAwal = parseInt($('sTahunAwal').value, 10);
+  var stok = $('sStok').value.trim();
+  if (!(tahunAwal >= 2000 && tahunAwal <= 2100)) return pesanJendela('Tahun stok awal tidak sah.', true);
+  if (stok === '' || !(Number(stok) >= 0)) return pesanJendela('Stok awal wajib diisi dengan angka nol atau lebih.', true);
+
+  var masuk = {}, salah = '';
+  Array.prototype.forEach.call($('isiJendela').querySelectorAll('input[data-tahun]'), function (el) {
+    var v = el.value.trim();
+    if (v === '') return;   // dibiarkan kosong: tidak diubah
+    if (!(Number(v) >= 0)) salah = 'Barang masuk ' + el.dataset.tahun + ' harus angka nol atau lebih.';
+    masuk[el.dataset.tahun] = Number(v);
+  });
+  if (salah) return pesanJendela(salah, true);
+
+  $('jSimpan').disabled = true;
+  kirim('simpanPersediaan', { kodeBarang: kode, tahunAwal: tahunAwal, stokAwal: Number(stok), masuk: masuk })
+    .then(function (j) {
+      $('jSimpan').disabled = false;
+      if (!j.ok) return pesanJendela(j.pesan || 'Gagal menyimpan data persediaan.', true);
+      tutupJendela();
+      $('pilihFSN').value = kode;
+      muatData();
+    });
+}
+
+/* -------------------------------- unduh CSV -------------------------------- */
+
+$('tombolUnduhFSN').addEventListener('click', function () {
+  if (!hasilTOR) return;
+  var tahun = hasilTOR.tahunDipakai;
+  var sel = function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; };
+  var judul = ['Kode', 'Nama barang'];
+  tahun.forEach(function (t) {
+    ['Paw', 'Pms', 'Ppk', 'Pak', 'Prt', 'TORp', 'Wsp', 'TOR'].forEach(function (k) { judul.push(k + ' ' + t); });
+  });
+  judul = judul.concat(['TOR rata-rata', 'Kelas FSN', 'Bulan pemakaian 0', 'Masuk sampel']);
+
+  var baris = [judul.map(sel).join(';')];
+  barangAktif().forEach(function (b) {
+    var h = hasilTOR.item[b.kode];
+    var isi = [b.kode, b.nama];
+    tahun.forEach(function (t, i) {
+      var r = h.perTahun[i] || {};
+      var ada = function (v, d) { return (v === null || v === undefined) ? '' : (d ? desimal(v, d) : v); };
+      isi.push(ada(r.paw), ada(r.pms), ada(r.ppk), ada(r.pak), ada(r.prt, 2),
+               ada(r.torp, 4), ada(r.wsp, 2), r.status ? selTOR(r).replace('—', '') : '');
+    });
+    isi.push(h.rata === null ? '' : desimal(h.rata, 4), h.kelas, h.bulanNol, h.sampel ? 'Ya' : 'Tidak');
+    baris.push(isi.map(sel).join(';'));
+  });
+
+  var tautan = document.createElement('a');
+  tautan.href = URL.createObjectURL(new Blob(['﻿' + baris.join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+  tautan.download = 'klasifikasi-fsn-' + (tahun.length ? tahun[0] + '-' + tahun[tahun.length - 1] : 'tor') + '.csv';
+  tautan.click();
+  URL.revokeObjectURL(tautan.href);
+});
 
 /* ============================================================
    9. DATA BARANG
