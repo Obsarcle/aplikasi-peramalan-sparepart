@@ -45,6 +45,7 @@ function paksaHurufBesar(id) {
 }
 paksaHurufBesar('namaMasuk');
 paksaHurufBesar('uNama');
+paksaHurufBesar('bKode');
 
 /* ============================================================
    3. PENGHUBUNG KE SERVER
