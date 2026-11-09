@@ -180,7 +180,7 @@
       terbaik: terbaik,
       ramalanTiapMetode: ramalan,
       ramalan: nilai,
-      bulat: nilai === null ? null : Math.round(nilai),
+      bulat: nilai === null ? null : Math.ceil(nilai - 1e-9),
       mad: mad,
       mape: terbaik && terbaik.akurasi ? terbaik.akurasi.mape : null,
       kategori: terbaik ? terbaik.kategori : 'Belum dapat dinilai',
