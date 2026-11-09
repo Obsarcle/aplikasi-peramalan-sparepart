@@ -10,7 +10,7 @@
    1. KONFIGURASI  -  ISI BAGIAN INI SETELAH MENERBITKAN APPS SCRIPT
    ============================================================ */
 
-var API_URL = 'https://script.google.com/macros/s/AKfycbzBF4dh9HErj9CQKS6c7HP1hU_VNuMDAuVVFE_3PCcR77PQ0ZEjHiiH52Udavm4OYwG7A/exec';   // .../exec
+var API_URL = 'https://script.google.com/macros/s/AKfycbwFFg77pZ0dIGc0N_vJPYA61-A_CuLH1WLEWMoEUAvldLL-enaY2Mlw5xW6OGdzj2TBbA/exec';   // .../exec
 
 /* ============================================================
    2. KEADAAN APLIKASI
