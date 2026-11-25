@@ -7,7 +7,7 @@
  *   - Moving average ordo 3
  *   - Moving average ordo 5
  *
- * Ukuran ketepatan: MAD, MSE, MAPE (kriteria Lewis, 1982).
+ * Ukuran ketepatan: MAD, MSE, MAPE (kriteria Lewis, 1982).k
  */
 
 (function (global) {
