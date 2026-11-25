@@ -55,10 +55,9 @@
       </div>
       <div class="gulir"><table id="tabelRencana"></table></div>
       <p class="catatan">
-        Rentang wajar dihitung dari MAD, yaitu rata-rata selisih antara ramalan dan
-        kenyataan pada periode uji. Perkiraan dan usulan beli dibulatkan ke atas karena sparepart dibeli dalam satuan utuh.
-        Ketepatan mengikuti kriteria Lewis (1982):
-        di bawah 10% sangat baik, 10–20% baik, 20–50% cukup, di atas 50% kurang akurat.
+        Ramalan kebutuhan dibulatkan ke atas karena
+        sparepart dibeli dalam satuan utuh. Ketepatan mengikuti kriteria Lewis (1982):
+        di bawah 10% sangat akurat, 10–20% baik, 20–50% wajar, di atas 50% tidak akurat. Hanya barang yang datanya lengkap, lolos penyaringan (tidak ada bulan pemakaian 0 dalam 3 tahun terakhir), dan lolos seleksi fast-moving yang diramalkan. Bulan tanpa catatan dianggap data hilang, bukan pemakaian 0.
       </p>
     </section>
 
@@ -74,7 +73,7 @@
 
         <div class="baris-isi">
           <label for="isiKode">Kode barang</label>
-          <input type="text" id="isiKode" placeholder="mis. FIL01" autocomplete="off">
+          <input type="text" id="isiKode" class="huruf-besar" placeholder="mis. FIL01" autocomplete="off">
         </div>
 
         <div class="baris-isi cari-bungkus">
@@ -101,12 +100,12 @@
       <div class="gulir"><table id="tabelTerisi"></table></div>
     </section>
 
-    <!-- --------------------------- KLASIFIKASI FSN --------------------------- -->
+    <!-- --------------------------- SELEKSI FAST-MOVING --------------------------- -->
     <section id="tFSN" class="panel-kelompok">
       <div class="panel">
         <div class="panel-kepala">
           <div>
-            <h2>Klasifikasi FSN (Turn Over Ratio)</h2>
+            <h2>Seleksi Fast-Moving (Turn Over Ratio)</h2>
             <p class="anak-judul" id="ketFSN"></p>
           </div>
           <button id="tombolUnduhFSN" class="tombol-kecil">Unduh tabel (CSV)</button>
@@ -122,7 +121,9 @@
           TOR &lt; 1 = <span class="label kurang">Non moving</span><br>
           Sumber: Hudori &amp; Tarigan (2019); Amalia et al. (2023).
           &infin; = rata-rata persediaan 0 tetapi ada pemakaian (barang langsung habis), tidak ikut dirata-ratakan.<br>
-          <strong>Masuk sampel</strong> = Fast moving dan tidak ada satu bulan pun dengan pemakaian 0.
+          Urutan: item dengan bulan tanpa catatan (<strong>data hilang</strong>) atau bulan pemakaian 0 dalam 3 tahun terakhir
+          dikeluarkan lebih dulu (<strong>tidak lolos penyaringan</strong>), lalu TOR dihitung untuk item yang lolos.<br>
+          <strong>Masuk sampel</strong> = lolos penyaringan dan Fast moving.
         </div>
       </div>
 
@@ -194,7 +195,7 @@
           <label for="uPeran">Peran</label>
           <select id="uPeran">
             <option value="gudang">Gudang</option>
-            <option value="logistik">Logistik</option>
+            <option value="purchasing">Purchasing</option>
             <option value="admin">Admin</option>
           </select>
         </div>
