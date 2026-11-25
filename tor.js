@@ -19,8 +19,10 @@
  *   - Prt = 0 di semua tahun dan ada pemakaian -> TOR rata-rata tak hingga, Fast moving.
  *   - Prt = 0 dan pemakaian 0                  -> tahun itu tidak dapat dihitung.
  *
- * Masuk sampel peramalan = Fast moving dan tidak ada satu bulan pun dengan
- * pemakaian 0 pada tahun-tahun yang dipakai untuk TOR rata-rata.
+ * Urutan sesuai diagram blok (Gambar 2.1), dalam 36 bulan terakhir sampai batas analisis:
+ *   blok 2  ada bulan tanpa catatan        -> "Data hilang", TOR tidak dihitung
+ *   blok 3  ada bulan pemakaian 0 (diisi 0) -> "Tidak lolos penyaringan", TOR tidak dihitung
+ *   blok 4  lolos penyaringan              -> TOR dihitung; fast moving = masuk sampel.
  */
 
 (function (global) {
@@ -35,7 +37,9 @@
     slow:  'Slow moving',
     non:   'Non moving',
     tidak: 'Tidak dapat dihitung',
-    belum: 'Persediaan belum diisi'
+    belum: 'Persediaan belum diisi',
+    hilang: 'Data hilang',
+    saring: 'Tidak lolos penyaringan'
   };
 
   function hariSetahun(tahun) {
@@ -65,7 +69,7 @@
    *   persediaan : [{ tahun, stokAwal (angka atau null), masuk }]
    *   lengkap    : daftar tahun lengkap (hasil tahunLengkap)
    */
-  function hitungItem(pemakaian, persediaan, lengkap) {
+  function hitungItem(pemakaian, persediaan, lengkap, periodeAkhir) {
     var jendela = lengkap.slice(-JUMLAH_TAHUN);
 
     var pakaiBulan = {};
@@ -87,19 +91,30 @@
     var tahunStok = Object.keys(stokAwal).map(Number).sort(function (a, b) { return a - b; });
     var tahunAwal = tahunStok.length ? tahunStok[0] : null;
 
-    // Bulan dengan pemakaian 0 pada tahun-tahun jendela.
-    var bulanNol = 0;
-    jendela.forEach(function (t) {
-      for (var b = 1; b <= 12; b++) if (!(pakaiBulan[t + '-' + duaDigit(b)] > 0)) bulanNol += 1;
-    });
+    // Bulan dengan pemakaian 0 dalam 36 bulan terakhir (sama dengan peramalan.js).
+    var P = global.Peramalan || require('./peramalan.js');
+    var susun = P.susunDeret(pemakaian, periodeAkhir);
+    var bulanHilang = P.hitungBulanHilang(susun);
+    var bulanNol = P.hitungBulanNol(susun.deret, susun.ada);
 
     var dasar = {
       tahunAwal: tahunAwal,
       tahunDipakai: jendela,
       bulanNol: bulanNol,
+      bulanHilang: bulanHilang,
       perTahun: [],
       peringatan: []
     };
+
+    // Blok 2 dan 3: item dengan data hilang atau bulan pemakaian 0 dikeluarkan
+    // sebelum TOR dihitung.
+    if (bulanHilang > 0 || bulanNol > 0) {
+      dasar.rata = null;
+      dasar.kunci = bulanHilang > 0 ? 'hilang' : 'saring';
+      dasar.kelas = KELAS[dasar.kunci];
+      dasar.sampel = false;
+      return dasar;
+    }
 
     if (tahunAwal === null || !jendela.length) {
       dasar.rata = null;
@@ -165,7 +180,7 @@
     else { dasar.kunci = 'non'; }
 
     dasar.kelas = KELAS[dasar.kunci];
-    dasar.sampel = dasar.kunci === 'fast' && bulanNol === 0;
+    dasar.sampel = dasar.kunci === 'fast';
     return dasar;
   }
 
@@ -175,8 +190,9 @@
    *   pemakaian  : [{ kode, periode, jumlah }]
    *   persediaan : [{ kode, tahun, stokAwal, masuk }]
    */
-  function hitungSemua(barang, pemakaian, persediaan) {
+  function hitungSemua(barang, pemakaian, persediaan, periodeAkhir) {
     var awal = '', akhir = '';
+    if (periodeAkhir) pemakaian = pemakaian.filter(function (x) { return x.periode <= periodeAkhir; });
     pemakaian.forEach(function (x) {
       if (!awal || x.periode < awal) awal = x.periode;
       if (!akhir || x.periode > akhir) akhir = x.periode;
@@ -189,7 +205,7 @@
 
     var hasil = {};
     barang.forEach(function (b) {
-      hasil[b.kode] = hitungItem(pakai[b.kode] || [], sedia[b.kode] || [], lengkap);
+      hasil[b.kode] = hitungItem(pakai[b.kode] || [], sedia[b.kode] || [], lengkap, periodeAkhir || akhir);
     });
 
     return {
