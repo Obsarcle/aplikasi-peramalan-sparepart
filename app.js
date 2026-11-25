@@ -10,23 +10,25 @@
    1. KONFIGURASI  -  ISI BAGIAN INI SETELAH MENERBITKAN APPS SCRIPT
    ============================================================ */
 
-var API_URL = 'https://script.google.com/macros/s/AKfycbwFFg77pZ0dIGc0N_vJPYA61-A_CuLH1WLEWMoEUAvldLL-enaY2Mlw5xW6OGdzj2TBbA/exec';   // .../exec
+var API_URL = 'https://script.google.com/macros/s/AKfycbzBF4dh9HErj9CQKS6c7HP1hU_VNuMDAuVVFE_3PCcR77PQ0ZEjHiiH52Udavm4OYwG7A/exec';   // .../exec
 
 /* ============================================================
    2. KEADAAN APLIKASI
    ============================================================ */
 
 var sesi   = { token: '', nama: '', peran: '' };
-var data   = { barang: [], pemakaian: [], persediaan: [], periodeTerakhir: '' };
-var hasilTOR = null;   // hasil klasifikasi FSN (hanya admin)
+var data   = { barang: [], pemakaian: [], persediaan: [], periodeTerakhir: '', periodeAnalisis: '' };
+var hasilTOR = null;   // hasil penyaringan dan seleksi fast-moving (admin dan purchasing)
 var hasil  = {};       // kode barang -> hasil perhitungan
 var pilihan = null;    // barang yang sedang dipilih di form input
 
 var TAB = {
-  admin:    [['tRencana', 'Rencana Pembelian'], ['tInput', 'Input & Koreksi'],
-             ['tFSN', 'Klasifikasi FSN'], ['tAnalisis', 'Analisis Metode'], ['tBarang', 'Data Barang'],
-             ['tPengguna', 'Pengguna']],
-  logistik: [['tRencana', 'Rencana Pembelian']],
+  // Urutan tab admin mengikuti diagram blok: input (blok 1-2), seleksi (blok 3-4),
+  // analisis (blok 5-8), rencana pembelian (blok 9).
+  admin:      [['tInput', 'Input Pemakaian'], ['tFSN', 'Seleksi Fast-Moving'],
+               ['tAnalisis', 'Analisis Metode'], ['tRencana', 'Rencana Pembelian'],
+               ['tBarang', 'Data Barang'], ['tPengguna', 'Pengguna']],
+  purchasing: [['tRencana', 'Rencana Pembelian']],
   gudang:   [['tInput', 'Input Pemakaian']]
 };
 
@@ -46,6 +48,7 @@ function paksaHurufBesar(id) {
 paksaHurufBesar('namaMasuk');
 paksaHurufBesar('uNama');
 paksaHurufBesar('bKode');
+paksaHurufBesar('isiKode');
 
 /* ============================================================
    3. PENGHUBUNG KE SERVER
@@ -360,11 +363,13 @@ function muatData() {
     data.pemakaian = j.pemakaian || [];
     data.persediaan = j.persediaan || [];
     data.periodeTerakhir = j.periodeTerakhir || '';
+    // Bulan berjalan belum selesai, jadi analisis berhenti di bulan sebelumnya.
+    data.periodeAnalisis = Peramalan.batasAnalisis(data.periodeTerakhir, new Date());
 
     if (sesi.peran !== 'gudang') hitungSemua();
 
     if (sesi.peran === 'gudang' || sesi.peran === 'admin') gambarInput();
-    if (sesi.peran === 'admin' || sesi.peran === 'logistik') gambarRencana();
+    if (sesi.peran === 'admin' || sesi.peran === 'purchasing') gambarRencana();
     if (sesi.peran === 'admin') { gambarFSN(); isiPilihanItem(); gambarBarang(); muatPengguna(); }
   });
 }
@@ -391,15 +396,34 @@ function hitungSemua() {
   var perItem = {};
   data.pemakaian.forEach(function (x) {
     (perItem[x.kode] = perItem[x.kode] || []).push(x);
-});
+  });
+
+  // Blok 2-4 (data hilang, penyaringan bulan 0, seleksi fast-moving) dijalankan
+  // lebih dulu; hanya barang yang lolos diteruskan ke blok peramalan.
+  hasilTOR = TOR.hitungSemua(barangAktif(), data.pemakaian, data.persediaan || [], data.periodeAnalisis);
 
   data.barang.forEach(function (b) {
-    var deret = Peramalan.susunDeret(perItem[b.kode] || [], data.periodeTerakhir);
-    hasil[b.kode] = deret.deret.length
-      ? Peramalan.hitung(deret.deret, deret.periode)
-      : { cukup: false, n: 0, minimal: Peramalan.MIN_PERIODE };
+    var deret = Peramalan.susunDeret(perItem[b.kode] || [], data.periodeAnalisis);
+    var t = hasilTOR.item[b.kode];
+    if (t && t.kunci !== 'fast') {
+      hasil[b.kode] = { cukup: false, bukanFast: true, kunciKelas: t.kunci, kelas: t.kelas,
+                        bulanNol: t.bulanNol, bulanHilang: t.bulanHilang, n: deret.deret.length };
+    } else {
+      hasil[b.kode] = deret.deret.length
+        ? Peramalan.hitung(deret.deret, deret.periode)
+        : { cukup: false, n: 0, minimal: Peramalan.MIN_PERIODE };
+    }
     hasil[b.kode].deret = deret;
   });
+}
+
+/** Teks alasan barang tidak diramalkan (blok 2, 3, atau 4). */
+function teksBukanFast(h) {
+  if (h.kunciKelas === 'hilang') return 'Ada ' + h.bulanHilang + ' bulan data hilang dalam 3 tahun terakhir, lengkapi dulu';
+  if (h.kunciKelas === 'saring') return 'Tidak lolos penyaringan (ada ' + h.bulanNol + ' bulan pemakaian 0 dalam 3 tahun terakhir)';
+  if (h.kunciKelas === 'belum') return 'Persediaan belum diisi, seleksi fast-moving belum dapat dilakukan';
+  if (h.kunciKelas === 'tidak') return 'TOR belum dapat dihitung';
+  return 'Bukan fast moving (' + h.kelas + ')';
 }
 
 /* ============================================================
@@ -407,19 +431,34 @@ function hitungSemua() {
    ============================================================ */
 
 function gambarRencana() {
-  var target = data.periodeTerakhir ? Peramalan.periodeSetelah(data.periodeTerakhir) : '';
-  $('ketRencana').textContent = target
+  var akhir = data.periodeAnalisis;
+  var target = akhir ? Peramalan.periodeSetelah(akhir) : '';
+  var ket = target
     ? 'Perkiraan kebutuhan ' + Peramalan.namaPeriode(target) +
-      ', berdasarkan data pemakaian sampai ' + Peramalan.namaPeriode(data.periodeTerakhir) + '.'
+      ', berdasarkan data pemakaian sampai ' + Peramalan.namaPeriode(akhir) + '.'
     : 'Belum ada data pemakaian.';
+  if (akhir && data.periodeTerakhir > akhir) {
+    ket += ' Data ' + Peramalan.namaPeriode(data.periodeTerakhir) +
+           ' belum dipakai karena bulannya belum selesai.';
+  }
+  if (akhir) {
+    var tercatat = {};
+    data.pemakaian.forEach(function (x) { if (x.periode === akhir) tercatat[x.kode] = true; });
+    var belum = barangAktif().filter(function (b) { return !tercatat[b.kode]; }).length;
+    if (belum) {
+      ket += ' Ada ' + belum + ' barang tanpa catatan pemakaian ' + Peramalan.namaPeriode(akhir) +
+             ' (dianggap data hilang); bila memang tidak dipakai, isi 0.';
+    }
+  }
+  $('ketRencana').textContent = ket;
 
   var admin = sesi.peran === 'admin';
-  var kolom = ['Kode', 'Nama barang', '3 bulan terakhir', 'Perkiraan',
-               'Rentang wajar', 'Ketepatan', 'Usulan beli'];
+  var kolom = ['Kode', 'Nama barang', '3 bulan terakhir',
+               'Ramalan kebutuhan (dibulatkan ke atas)', 'Ketepatan'];
   if (admin) kolom = kolom.concat(['MAPE', 'Metode terpilih']);
 
   var html = '<thead><tr>' + kolom.map(function (k, i) {
-    return '<th class="' + (i >= 3 && i <= 4 ? 'angka' : '') + '">' + k + '</th>';
+    return '<th class="' + (i === 3 ? 'angka' : '') + '">' + k + '</th>';
   }).join('') + '</tr></thead><tbody>';
 
   var aktif = data.barang.filter(function (b) { return b.aktif; });
@@ -438,16 +477,18 @@ function gambarRencana() {
     html += '<td class="angka">' + tiga + '</td>';
 
     if (!h.cukup) {
-      html += '<td class="angka">—</td><td class="angka">—</td>';
-      html += '<td><span class="label belum">Data belum cukup (' + (h.n || 0) +
-              '/' + Peramalan.MIN_PERIODE + ' bulan)</span></td>';
       html += '<td class="angka">—</td>';
+      html += h.bukanFast
+        ? '<td><span class="label belum">' + aman(teksBukanFast(h)) + '</span></td>'
+        : h.luarSampel
+        ? '<td><span class="label belum">Di luar sampel (ada ' + h.bulanNol +
+          ' bulan pemakaian 0 dalam 3 tahun terakhir)</span></td>'
+        : '<td><span class="label belum">Data belum cukup (' + (h.n || 0) +
+          '/' + Peramalan.MIN_PERIODE + ' bulan)</span></td>';
       if (admin) html += '<td class="angka">—</td><td>—</td>';
     } else {
       html += '<td class="angka tebal">' + h.bulat + '</td>';
-      html += '<td class="angka">' + (h.rentang ? h.rentang[0] + ' – ' + h.rentang[1] : '—') + '</td>';
       html += '<td>' + lencanaKategori(h.kategori) + '</td>';
-      html += '<td class="angka tebal">' + h.bulat + '</td>';
       if (admin) {
         html += '<td class="angka">' + (h.mape === null ? '—' : h.mape.toFixed(2) + '%') + '</td>';
         html += '<td>' + (h.terbaik ? aman(h.terbaik.nama) : '—') + '</td>';
@@ -460,8 +501,8 @@ function gambarRencana() {
 }
 
 function lencanaKategori(k) {
-  var kelas = { 'Sangat baik': 'sangat-baik', 'Baik': 'baik', 'Cukup': 'cukup',
-                'Kurang akurat': 'kurang' }[k] || 'belum';
+  var kelas = { 'Sangat akurat': 'sangat-baik', 'Baik': 'baik', 'Wajar': 'cukup',
+                'Tidak akurat': 'kurang' }[k] || 'belum';
   return '<span class="label ' + kelas + '">' + k + '</span>';
 }
 
@@ -476,7 +517,7 @@ $('tombolUnduh').addEventListener('click', function () {
     baris.push(sel.join(';'));
   });
 
-  var target = data.periodeTerakhir ? Peramalan.periodeSetelah(data.periodeTerakhir) : 'rencana';
+  var target = data.periodeAnalisis ? Peramalan.periodeSetelah(data.periodeAnalisis) : 'rencana';
   var isi = '﻿' + baris.join('\r\n');
   var tautan = document.createElement('a');
   tautan.href = URL.createObjectURL(new Blob([isi], { type: 'text/csv;charset=utf-8' }));
@@ -716,6 +757,18 @@ function gambarAnalisis() {
 
   if (!h) { wadah.innerHTML = '<p class="catatan">Pilih item terlebih dahulu.</p>'; return; }
 
+  if (h.bukanFast) {
+    wadah.innerHTML = '<p class="catatan">Item ini tidak diramalkan: ' + aman(teksBukanFast(h)) +
+      '. Peramalan hanya dilakukan untuk barang yang datanya lengkap, lolos penyaringan, ' +
+      'dan lolos seleksi fast-moving (TOR rata-rata &gt; 3).</p>';
+    return;
+  }
+  if (h.luarSampel) {
+    wadah.innerHTML = '<p class="catatan">Item ini di luar sampel karena ada ' + h.bulanNol +
+      ' bulan dengan pemakaian 0 dalam 3 tahun terakhir (MAPE tidak terdefinisi bila nilai aktual 0). ' +
+      'Peramalan baru dilakukan setelah tidak ada lagi bulan dengan pemakaian 0 dalam 3 tahun.</p>';
+    return;
+  }
   if (!h.cukup) {
     wadah.innerHTML = '<p class="catatan">Item ini baru memiliki ' + h.n +
       ' periode data. Peramalan memerlukan sekurang-kurangnya ' +
@@ -776,9 +829,7 @@ function gambarAnalisis() {
   });
   html += '</tbody></table></div>';
 
-  html += '<p class="catatan">Metode terpilih adalah yang memiliki MAPE terkecil. ' +
-          'Apabila selisih MAPE antarmetode kurang dari ' + Peramalan.AMBANG_MAPE +
-          '%, penentuan dilakukan berdasarkan MAD dan MSE terkecil. ' +
+  html += '<p class="catatan">Metode terpilih adalah yang memiliki MAPE terkecil; MAD dan MSE sebagai pelengkap. ' +
           'Ramalan periode berikutnya dihitung menggunakan seluruh data yang tersedia.</p>';
 
   wadah.innerHTML = html;
@@ -792,7 +843,8 @@ function kartu(judul, nilai) {
    8b. KLASIFIKASI FSN (TURN OVER RATIO)  -  hanya admin
    ============================================================ */
 
-var KELAS_LABEL = { fast: 'sangat-baik', slow: 'cukup', non: 'kurang', tidak: 'belum', belum: 'belum' };
+var KELAS_LABEL = { fast: 'sangat-baik', slow: 'cukup', non: 'kurang', tidak: 'belum', belum: 'belum',
+                    hilang: 'kurang', saring: 'kurang' };
 
 /** Angka gaya Indonesia: dua desimal, koma sebagai pemisah. */
 function desimal(x, digit) {
@@ -814,7 +866,9 @@ function lencanaKelas(h) {
 
 function lencanaSampel(h) {
   if (h.sampel) return '<span class="label sangat-baik">Ya</span>';
-  var alasan = (h.kunci === 'fast' && h.bulanNol > 0)
+  var alasan = h.kunci === 'hilang'
+    ? ' <span class="alasan">(ada ' + h.bulanHilang + ' bulan data hilang)</span>'
+    : h.kunci === 'saring'
     ? ' <span class="alasan">(ada ' + h.bulanNol + ' bulan pemakaian 0)</span>' : '';
   return '<span class="label kurang">Tidak</span>' + alasan;
 }
@@ -825,7 +879,6 @@ function barangAktif() {
 
 function gambarFSN() {
   var aktif = barangAktif();
-  hasilTOR = TOR.hitungSemua(aktif, data.pemakaian, data.persediaan || []);
   var tahun = hasilTOR.tahunDipakai;
 
   $('ketFSN').textContent = tahun.length
@@ -834,13 +887,15 @@ function gambarFSN() {
     : 'Belum ada tahun dengan data pemakaian 12 bulan penuh, jadi TOR belum dapat dihitung.';
 
   // Ringkasan
-  var hitung = { fast: 0, slow: 0, non: 0, tidak: 0, belum: 0 }, sampel = 0;
+  var hitung = { fast: 0, slow: 0, non: 0, tidak: 0, belum: 0, hilang: 0, saring: 0 }, sampel = 0;
   aktif.forEach(function (b) {
     var h = hasilTOR.item[b.kode];
     hitung[h.kunci] += 1;
     if (h.sampel) sampel += 1;
   });
-  var ringkas = kartu('Fast moving', hitung.fast + ' item') +
+  var ringkas = (hitung.hilang ? kartu('Data hilang', hitung.hilang + ' item') : '') +
+                kartu('Tidak lolos penyaringan', hitung.saring + ' item') +
+                kartu('Fast moving', hitung.fast + ' item') +
                 kartu('Slow moving', hitung.slow + ' item') +
                 kartu('Non moving', hitung.non + ' item') +
                 kartu('Masuk sampel peramalan', sampel + ' item');
@@ -860,7 +915,7 @@ function gambarFSN() {
 
   var html = '<thead><tr><th>Kode</th><th>Nama barang</th>' +
     tahun.map(function (t) { return '<th class="angka">TOR ' + t + '</th>'; }).join('') +
-    '<th class="angka">TOR rata-rata</th><th>Kelas FSN</th><th class="bungkus">Masuk sampel peramalan</th><th></th></tr></thead><tbody>';
+    '<th class="angka">TOR rata-rata</th><th>Kelas</th><th class="bungkus">Masuk sampel peramalan</th><th></th></tr></thead><tbody>';
 
   if (!urut.length) html += '<tr><td colspan="' + (6 + tahun.length) + '">Belum ada data barang.</td></tr>';
 
@@ -900,6 +955,14 @@ function gambarRincianFSN() {
 
   if (!h) { wadah.innerHTML = '<p class="catatan">Belum ada data barang.</p>'; return; }
 
+  if (h.kunci === 'hilang' || h.kunci === 'saring') {
+    wadah.innerHTML = '<p class="catatan">' + (h.kunci === 'hilang'
+      ? 'Item ini punya ' + h.bulanHilang + ' bulan tanpa catatan (data hilang) dalam 3 tahun terakhir. ' +
+        'Lengkapi datanya di tab Input Pemakaian (isi 0 bila memang tidak dipakai).'
+      : 'Item ini tidak lolos penyaringan karena ada ' + h.bulanNol + ' bulan pemakaian 0 dalam 3 tahun ' +
+        'terakhir (MAPE tidak terdefinisi bila nilai aktual 0), sehingga TOR-nya tidak dihitung.') + '</p>';
+    return;
+  }
   if (h.kunci === 'belum') {
     wadah.innerHTML = '<p class="catatan">Data persediaan item ini belum diisi. Tekan ' +
       '<strong>Ubah data persediaan</strong> untuk mengisi stok awal dan barang masuk per tahun.</p>';
@@ -1028,7 +1091,7 @@ $('tombolUnduhFSN').addEventListener('click', function () {
   tahun.forEach(function (t) {
     ['Paw', 'Pms', 'Ppk', 'Pak', 'Prt', 'TORp', 'Wsp', 'TOR'].forEach(function (k) { judul.push(k + ' ' + t); });
   });
-  judul = judul.concat(['TOR rata-rata', 'Kelas FSN', 'Bulan pemakaian 0', 'Masuk sampel']);
+  judul = judul.concat(['TOR rata-rata', 'Kelas', 'Bulan data hilang', 'Bulan pemakaian 0', 'Masuk sampel']);
 
   var baris = [judul.map(sel).join(';')];
   barangAktif().forEach(function (b) {
@@ -1040,7 +1103,7 @@ $('tombolUnduhFSN').addEventListener('click', function () {
       isi.push(ada(r.paw), ada(r.pms), ada(r.ppk), ada(r.pak), ada(r.prt, 2),
                ada(r.torp, 4), ada(r.wsp, 2), r.status ? selTOR(r).replace('—', '') : '');
     });
-    isi.push(h.rata === null ? '' : desimal(h.rata, 4), h.kelas, h.bulanNol, h.sampel ? 'Ya' : 'Tidak');
+    isi.push(h.rata === null ? '' : desimal(h.rata, 4), h.kelas, h.bulanHilang, h.bulanNol, h.sampel ? 'Ya' : 'Tidak');
     baris.push(isi.map(sel).join(';'));
   });
 
@@ -1162,7 +1225,7 @@ function gambarPengguna() {
     html += '<tr class="' + (u.aktif ? '' : 'mati') + '">' +
             '<td>' + aman(u.nama) + (sendiri ? ' <span class="anak-judul">(Anda)</span>' : '') + '</td>' +
             '<td><select data-peran="' + aman(u.nama) + '"' + (sendiri ? ' disabled' : '') + '>' +
-              ['gudang', 'logistik', 'admin'].map(function (r) {
+              ['gudang', 'purchasing', 'admin'].map(function (r) {
                 return '<option value="' + r + '"' + (u.peran === r ? ' selected' : '') + '>' +
                        r.charAt(0).toUpperCase() + r.slice(1) + '</option>';
               }).join('') +
